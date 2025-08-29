@@ -1,0 +1,40 @@
+# Egypt Manufacturing Device Configuration
+client_id: "egypt_client_001"
+api_endpoint: "http://localhost:8003"  # Updated for v2 API
+api_key: "egypt_secure_api_key_2024"
+
+devices:
+  - machine_id: "EG_M001"
+    name: "CNC Mill Alpha"
+    protocol: "modbus"
+    connection:
+      host: "192.168.1.100"
+      port: 502
+      slave_id: 1
+    sensors:
+      - name: "temperature"
+        address: 1001
+        unit: "°C"
+        scale_factor: 0.1
+      - name: "spindle_speed"
+        address: 1002
+        unit: "RPM"
+      - name: "vibration"
+        address: 1003
+        unit: "mm/s"
+        scale_factor: 0.01
+  
+  - machine_id: "EG_M002"
+    name: "Assembly Line Beta"
+    protocol: "modbus"
+    connection:
+      host: "192.168.1.101"
+      port: 502
+      slave_id: 2
+    sensors:
+      - name: "conveyor_speed"
+        address: 2001
+        unit: "m/min"
+      - name: "efficiency"
+        address: 2002
+        unit: "%"
