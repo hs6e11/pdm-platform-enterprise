@@ -4,3 +4,6 @@
 
 ## 2025-08-30
 - Backend: JWT/RBAC + Timescale hypertable + rate limit + audit.
+
+## 2025-08-31
+- Test commit to confirm GitHub latest commit display
