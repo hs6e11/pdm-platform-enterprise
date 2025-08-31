@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IngestReading v1",
+  "type": "object",
+  "required": ["machine_id", "timestamp", "sensors"],
+  "properties": {
+    "machine_id": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "sensors": {
+      "type": "object",
+      "additionalProperties": { "type": "number" }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+cat > api/dependencies/auth.py <<'PY'
+from typing import Optional
+from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import re, uuid
+
+bearer = HTTPBearer(auto_error=True)
+_UUID_RE = re.compile(r"^[0-9a-fA-F-]{36}$")
+
+async def get_tenant_id(
+    request: Request,
+    token: HTTPAuthorizationCredentials = Depends(bearer),
+) -> uuid.UUID:
+    """
+    Temporary auth: Accepts a UUID bearer token and verifies it exists in tenants table.
+    Will be replaced with OAuth2/JWT + RBAC.
+    """
+    raw = token.credentials.strip()
+    if not _UUID_RE.match(raw):
+        raise HTTPException(status_code=401, detail="Invalid tenant token (expect UUID)")
+    try:
+        tid = uuid.UUID(raw)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid tenant token")
+    pool = getattr(request.app.state, "pool", None)
+    if pool is None:
+        raise HTTPException(status_code=503, detail="DB pool not ready")
+    async with pool.acquire() as conn:
+        exists = await conn.fetchval("SELECT 1 FROM tenants WHERE id=$1", tid)
+        if not exists:
+            raise HTTPException(status_code=401, detail="Unknown tenant")
+    return tid
+PY
+

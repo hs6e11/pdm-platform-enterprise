@@ -1,0 +1,46 @@
+openapi: 3.0.3
+info:
+  title: PDM Platform API
+  version: 2.0.0
+paths:
+  /auth/token:
+    post:
+      summary: Issue JWT
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: JWT token
+  /tenants:
+    get:
+      summary: List tenants
+      responses: { "200": { description: OK } }
+    post:
+      summary: Create tenant
+      responses: { "200": { description: OK } }
+  /api/iot/data:
+    post:
+      summary: Ingest one reading
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestReading'
+      responses:
+        "200": { description: OK }
+components:
+  schemas:
+    IngestReading:
+      type: object
+      required: [machine_id, timestamp, sensors]
+      properties:
+        machine_id: { type: string }
+        timestamp: { type: string, format: date-time }
+        sensors:   { type: object, additionalProperties: true }

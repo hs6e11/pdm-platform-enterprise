@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDM Platform v2.0 - Professional Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logo {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            font-size: 18px;
+        }
+
+        .title-section h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+
+        .user-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-left: auto;
+        }
+
+        .tenant-selector {
+            padding: 10px 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            background: white;
+            font-size: 14px;
+            min-width: 200px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .card-icon {
+            width: 35px;
+            height: 35px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: white;
+        }
+
+        .icon-equipment { background: linear-gradient(45deg, #3498db, #2980b9); }
+        .icon-sensors { background: linear-gradient(45deg, #e74c3c, #c0392b); }
+        .icon-anomalies { background: linear-gradient(45deg, #f39c12, #e67e22); }
+        .icon-system { background: linear-gradient(45deg, #9b59b6, #8e44ad); }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .metric-label {
+            color: #7f8c8d;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-trend {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-top: 10px;
+            font-size: 13px;
+        }
+
+        .trend-up { color: #27ae60; }
+        .trend-down { color: #e74c3c; }
+
+        .chart-container {
+            height: 200px;
+            margin-top: 15px;
+        }
+
+        .equipment-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .equipment-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            border-left: 4px solid #4CAF50;
+            transition: all 0.3s ease;
+        }
+
+        .equipment-card:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .equipment-card.warning {
+            border-left-color: #f39c12;
+            background: #fefbf3;
+        }
+
+        .equipment-card.critical {
+            border-left-color: #e74c3c;
+            background: #fdf2f2;
+        }
+
+        .equipment-name {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .equipment-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-weight: 500;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+
+        .status-normal { background: #d5f4e6; color: #27ae60; }
+        .status-warning { background: #fef5e7; color: #f39c12; }
+        .status-critical { background: #fdeaea; color: #e74c3c; }
+
+        .alerts-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .alert-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #e74c3c;
+        }
+
+        .alert-severity {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .severity-low { background: #27ae60; }
+        .severity-medium { background: #f39c12; }
+        .severity-high { background: #e74c3c; }
+        .severity-critical { background: #8e44ad; }
+
+        .alert-content {
+            flex: 1;
+        }
+
+        .alert-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 3px;
+        }
+
+        .alert-time {
+            color: #7f8c8d;
+            font-size: 12px;
+        }
+
+        .refresh-button {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .refresh-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff40;
+            border-top: 2px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .user-section {
+                margin-left: 0;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .equipment-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo">PDM</div>
+                    <div class="title-section">
+                        <h1>PDM Platform v2.0</h1>
+                        <div class="subtitle">Professional Predictive Maintenance Dashboard</div>
+                    </div>
+                </div>
+                
+                <div class="user-section">
+                    <select class="tenant-selector" id="tenantSelector">
+                        <option value="">Loading tenants...</option>
+                    </select>
+                    <div class="status-indicator" id="connectionStatus">
+                        <div class="status-dot"></div>
+                        <span>Connected</span>
+                    </div>
+                    <button class="refresh-button" id="refreshButton" onclick="refreshDashboard()">
+                        <span id="refreshText">Refresh</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Equipment Overview -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Equipment Overview</h3>
+                    <div class="card-icon icon-equipment">⚙️</div>
+                </div>
+                <div class="metric-value" id="totalEquipment">-</div>
+                <div class="metric-label">Active Equipment</div>
+                <div class="metric-trend trend-up" id="equipmentTrend">
+                    <span>↗</span> All systems operational
+                </div>
+            </div>
+
+            <!-- Live Sensor Data -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Live Sensor Data</h3>
+                    <div class="card-icon icon-sensors">📊</div>
+                </div>
+                <div class="metric-value" id="totalSensors">-</div>
+                <div class="metric-label">Sensors Reporting</div>
+                <div class="metric-trend" id="sensorsTrend">
+                    <span>📡</span> Real-time data flow
+                </div>
+            </div>
+
+            <!-- Anomalies Detected -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Anomaly Detection</h3>
+                    <div class="card-icon icon-anomalies">🚨</div>
+                </div>
+                <div class="metric-value" id="totalAnomalies">-</div>
+                <div class="metric-label">Active Anomalies</div>
+                <div class="metric-trend" id="anomaliesTrend">
+                    <span>🤖</span> ML monitoring active
+                </div>
+            </div>
+
+            <!-- System Health -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">System Health</h3>
+                    <div class="card-icon icon-system">💾</div>
+                </div>
+                <div class="metric-value" id="systemHealth">-</div>
+                <div class="metric-label">Overall Health</div>
+                <div class="metric-trend trend-up" id="healthTrend">
+                    <span>✅</span> All systems healthy
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Charts -->
+        <div class="dashboard-grid">
+            <!-- Vibration Trends -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Vibration Trends</h3>
+                    <div class="card-icon icon-sensors">📈</div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="vibrationChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Temperature Monitoring -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Temperature Monitoring</h3>
+                    <div class="card-icon icon-sensors">🌡️</div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="temperatureChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Equipment Status Grid -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Equipment Status</h3>
+                <div class="card-icon icon-equipment">🏭</div>
+            </div>
+            <div class="equipment-grid" id="equipmentGrid">
+                <!-- Equipment cards will be generated here -->
+            </div>
+        </div>
+
+        <!-- Recent Alerts -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Recent Alerts</h3>
+                <div class="card-icon icon-anomalies">🔔</div>
+            </div>
+            <div class="alerts-list" id="alertsList">
+                <!-- Alerts will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>PDM Platform v2.0 - Professional Predictive Maintenance System</p>
+        <p>Last updated: <span id="lastUpdate">-</span></p>
+    </div>
+
+    <script>
+        // Global configuration
+        const CONFIG = {
+            apiEndpoint: window.location.origin.includes('localhost') ? 'http://localhost:3000' : window.location.origin,
+            refreshInterval: 30000, // 30 seconds
+            chartUpdateInterval: 5000, // 5 seconds
+            maxDataPoints: 50,
+            currentTenant: null,
+            charts: {}
+        };
+
+        // Dashboard state
+        const dashboardState = {
+            isLoading: false,
+            lastUpdate: null,
+            tenants: [],
+            equipment: [],
+            alerts: [],
+            metrics: {}
+        };
+
+        // Initialize dashboard
+        async function initializeDashboard() {
+            console.log('🚀 Initializing PDM Platform v2.0 Dashboard');
+            
+            try {
+                // Load tenants
+                await loadTenants();
+                
+                // Setup charts
+                initializeCharts();
+                
+                // Load initial data
+                await refreshDashboard();
+                
+                // Setup auto-refresh
+                setInterval(refreshDashboard, CONFIG.refreshInterval);
+                setInterval(updateCharts, CONFIG.chartUpdateInterval);
+                
+                // Setup tenant selector
+                document.getElementById('tenantSelector').addEventListener('change', onTenantChange);
+                
+                console.log('✅ Dashboard initialized successfully');
+                
+            } catch (error) {
+                console.error('❌ Failed to initialize dashboard:', error);
+                updateConnectionStatus(false);
+            }
+        }
+
+        // Load available tenants
+        async function loadTenants() {
+            try {
+                const response = await fetch(`${CONFIG.apiEndpoint}/api/tenants`, {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (response.ok) {
+                    const tenants = await response.json();
+                    dashboardState.tenants = tenants;
+                    
+                    const selector = document.getElementById('tenantSelector');
+                    selector.innerHTML = '<option value="">All Tenants</option>';
+                    
+                    tenants.forEach(tenant => {
+                        const option = document.createElement('option');
+                        option.value = tenant.id;
+                        option.textContent = tenant.name;
+                        selector.appendChild(option);
+                    });
+                    
+                    // Select first tenant if available
+                    if (tenants.length > 0) {
+                        CONFIG.currentTenant = tenants[0].id;
+                        selector.value = CONFIG.currentTenant;
+                    }
+                    
+                } else {
+                    throw new Error(`Failed to load tenants: ${response.status}`);
+                }
+            } catch (error) {
+                console.error('Error loading tenants:', error);
+                // Use demo data for development
+                loadDemoData();
+            }
+        }
+
+        // Handle tenant selection change
+        async function onTenantChange(event) {
+            CONFIG.currentTenant = event.target.value || null;
+            await refreshDashboard();
+        }
+
+        // Main refresh function
+        async function refreshDashboard() {
+            if (dashboardState.isLoading) return;
+            
+            dashboardState.isLoading = true;
+            const refreshButton = document.getElementById('refreshButton');
+            const refreshText = document.getElementById('refreshText');
+            
+            refreshText.innerHTML = '<span class="loading"></span>';
+            
+            try {
+                // Load dashboard data
+                await Promise.all([
+                    loadOverviewMetrics(),
+                    loadEquipmentStatus(),
+                    loadRecentAlerts(),
+                    loadSensorData()
+                ]);
+                
+                // Update UI
+                updateOverviewCards();
+                updateEquipmentGrid();
+                updateAlertsList();
+                updateCharts();
+                
+                // Update connection status
+                updateConnectionStatus(true);
+                dashboardState.lastUpdate = new Date();
+                document.getElementById('lastUpdate').textContent = dashboardState.lastUpdate.toLocaleTimeString();
+                
+            } catch (error) {
+                console.error('Error refreshing dashboard:', error);
+                updateConnectionStatus(false);
+            } finally {
+                dashboardState.isLoading = false;
+                refreshText.textContent = 'Refresh';
+            }
+        }
+
+        // Load overview metrics
+        async function loadOverviewMetrics() {
+            try {
+                const params = CONFIG.currentTenant ? `?tenant_id=${CONFIG.currentTenant}` : '';
+                const response = await fetch(`${CONFIG.apiEndpoint}/api/dashboard/overview${params}`);
+                
+                if (response.ok) {
+                    dashboardState.metrics = await response.json();
+                } else {
+                    // Use demo metrics for development
+                    dashboardState.metrics = {
+                        total_equipment: 12,
+                        active_sensors: 48,
+                        active_anomalies: 2,
+                        system_health: 98.5
+                    };
+                }
+            } catch (error) {
+                console.error('Error loading overview metrics:', error);
+                // Fallback to demo data
+                dashboardState.metrics = {
+                    total_equipment: 12,
+                    active_sensors: 48,
+                    active_anomalies: 2,
+                    system_health: 98.5
+                };
+            }
+        }
+
+        // Load equipment status
+        async function loadEquipmentStatus() {
+            try {
+                const params = CONFIG.currentTenant ? `?tenant_id=${CONFIG.currentTenant}` : '';
+                const response = await fetch(`${CONFIG.apiEndpoint}/api/equipment/status${params}`);
+                
+                if (response.ok) {
+                    dashboardState.equipment = await response.json();
+                } else {
+                    // Use demo equipment for development
+                    dashboardState.equipment = generateDemoEquipment();
+                }
+            } catch (error) {
+                console.error('Error loading equipment status:', error);
+                dashboardState.equipment = generateDemoEquipment();
+            }
+        }
+
+        // Load recent alerts
+        async function loadRecentAlerts() {
+            try {
+                const params = CONFIG.currentTenant ? `?tenant_id=${CONFIG.currentTenant}` : '';
+                const response = await fetch(`${CONFIG.apiEndpoint}/api/alerts/recent${params}`);
+                
+                if (response.ok) {
+                    dashboardState.alerts = await response.json();
+                } else {
+                    dashboardState.alerts = generateDemoAlerts();
+                }
+            } catch (error) {
+                console.error('Error loading recent alerts:', error);
+                dashboardState.alerts = generateDemoAlerts();
+            }
+        }
+
+        // Load sensor data for charts
+        async function loadSensorData() {
+            try {
+                const params = CONFIG.currentTenant ? `?tenant_id=${CONFIG.currentTenant}` : '';
+                const response = await fetch(`${CONFIG.apiEndpoint}/api/sensors/recent${params}`);
+                
+                if (response.ok) {
+                    const sensorData = await response.json();
+                    dashboardState.sensorData = sensorData;
+                } else {
+                    dashboardState.sensorData = generateDemoSensorData();
+                }
+            } catch (error) {
+                console.error('Error loading sensor data:', error);
+                dashboardState.sensorData = generateDemoSensorData();
+            }
+        }
+
+        // Update overview cards
+        function updateOverviewCards() {
+            const metrics = dashboardState.metrics;
+            
+            document.getElementById('totalEquipment').textContent = metrics.total_equipment || '-';
+            document.getElementById('totalSensors').textContent = metrics.active_sensors || '-';
+            document.getElementById('totalAnomalies').textContent = metrics.active_anomalies || '-';
+            document.getElementById('systemHealth').textContent = metrics.system_health ? `${metrics.system_health}%` : '-';
+            
+            // Update trends
+            const healthTrend = document.getElementById('healthTrend');
+            if (metrics.system_health >= 95) {
+                healthTrend.innerHTML = '<span>✅</span> Excellent health';
+                healthTrend.className = 'metric-trend trend-up';
+            } else if (metrics.system_health >= 80) {
+                healthTrend.innerHTML = '<span>⚠️</span> Good health';
+                healthTrend.className = 'metric-trend';
+            } else {
+                healthTrend.innerHTML = '<span>🚨</span> Needs attention';
+                healthTrend.className = 'metric-trend trend-down';
+            }
+        }
+
+        // Update equipment grid
+        function updateEquipmentGrid() {
+            const grid = document.getElementById('equipmentGrid');
+            grid.innerHTML = '';
+            
+            dashboardState.equipment.forEach(equipment => {
+                const card = document.createElement('div');
+                card.className = `equipment-card ${equipment.status.toLowerCase()}`;
+                
+                card.innerHTML = `
+                    <div class="equipment-name">${equipment.name}</div>
+                    <div class="equipment-status">
+                        <span>Last reading: ${equipment.last_reading}</span>
+                        <span class="status-badge status-${equipment.status.toLowerCase()}">${equipment.status}</span>
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+
+        // Update alerts list
+        function updateAlertsList() {
+            const list = document.getElementById('alertsList');
+            list.innerHTML = '';
+            
+            if (dashboardState.alerts.length === 0) {
+                list.innerHTML = '<div style="text-align: center; padding: 30px; color: #7f8c8d;">No recent alerts</div>';
+                return;
+            }
+            
+            dashboardState.alerts.forEach(alert => {
+                const item = document.createElement('div');
+                item.className = 'alert-item';
+                
+                item.innerHTML = `
+                    <div class="alert-severity severity-${alert.severity}"></div>
+                    <div class="alert-content">
+                        <div class="alert-title">${alert.title}</div>
+                        <div class="alert-time">${alert.time}</div>
+                    </div>
+                `;
+                
+                list.appendChild(item);
+            });
+        }
+
+        // Initialize charts
+        function initializeCharts() {
+            // Vibration chart
+            const vibrationCtx = document.getElementById('vibrationChart').getContext('2d');
+            CONFIG.charts.vibration = new Chart(vibrationCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Vibration (mm/s)',
+                        data: [],
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: { 
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.1)' }
+                        }
+                    },
+                    elements: {
+                        point: { radius: 0 }
+                    }
+                }
+            });
+
+            // Temperature chart
+            const temperatureCtx = document.getElementById('temperatureChart').getContext('2d');
+            CONFIG.charts.temperature = new Chart(temperatureCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Temperature (°C)',
+                        data: [],
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: { display: false },
+                        y: { 
+                            beginAtZero: false,
+                            grid: { color: 'rgba(0,0,0,0.1)' }
+                        }
+                    },
+                    elements: {
+                        point: { radius: 0 }
+                    }
+                }
+            });
+        }
+
+        // Update charts with new data
+        function updateCharts() {
+            if (!dashboardState.sensorData) return;
+            
+            const now = new Date();
+            const timeLabel = now.toLocaleTimeString();
+            
+            // Update vibration chart
+            const vibrationChart = CONFIG.charts.vibration;
+            const vibrationValue = dashboardState.sensorData.vibration || (Math.random() * 5 + 2);
+            
+            vibrationChart.data.labels.push(timeLabel);
+            vibrationChart.data.datasets[0].data.push(vibrationValue);
+            
+            if (vibrationChart.data.labels.length > CONFIG.maxDataPoints) {
+                vibrationChart.data.labels.shift();
+                vibrationChart.data.datasets[0].data.shift();
+            }
+            
+            vibrationChart.update('none');
+            
+            // Update temperature chart
+            const temperatureChart = CONFIG.charts.temperature;
+            const temperatureValue = dashboardState.sensorData.temperature || (Math.random() * 10 + 65);
+            
+            temperatureChart.data.labels.push(timeLabel);
+            temperatureChart.data.datasets[0].data.push(temperatureValue);
+            
+            if (temperatureChart.data.labels.length > CONFIG.maxDataPoints) {
+                temperatureChart.data.labels.shift();
+                temperatureChart.data.datasets[0].data.shift();
+            }
+            
+            temperatureChart.update('none');
+        }
+
+        // Update connection status indicator
+        function updateConnectionStatus(connected) {
+            const statusIndicator = document.getElementById('connectionStatus');
+            const statusSpan = statusIndicator.querySelector('span');
+            
+            if (connected) {
+                statusIndicator.style.background = '#4CAF50';
+                statusSpan.textContent = 'Connected';
+            } else {
+                statusIndicator.style.background = '#e74c3c';
+                statusSpan.textContent = 'Connection Error';
+            }
+        }
+
+        // Demo data generators for development
+        function generateDemoEquipment() {
+            const statuses = ['normal', 'warning', 'critical'];
+            const equipment = [];
+            
+            for (let i = 1; i <= 12; i++) {
+                equipment.push({
+                    id: `EG_M${i.toString().padStart(3, '0')}`,
+                    name: `Motor ${i}`,
+                    status: statuses[Math.floor(Math.random() * (i <= 10 ? 2 : 3))], // Mostly normal/warning
+                    last_reading: `${Math.floor(Math.random() * 5) + 1}min ago`
+                });
+            }
+            
+            return equipment;
+        }
+
+        function generateDemoAlerts() {
+            return [
+                {
+                    id: 1,
+                    title: 'High vibration detected on Motor 3',
+                    severity: 'high',
+                    time: '2 minutes ago'
+                },
+                {
+                    id: 2,
+                    title: 'Temperature spike on Pump 2',
+                    severity: 'medium',
+                    time: '15 minutes ago'
+                },
+                {
+                    id: 3,
+                    title: 'Maintenance due for Compressor 1',
+                    severity: 'low',
+                    time: '1 hour ago'
+                }
+            ];
+        }
+
+        function generateDemoSensorData() {
+            return {
+                vibration: Math.random() * 5 + 2,
+                temperature: Math.random() * 10 + 65,
+                timestamp: new Date()
+            };
+        }
+
+        function loadDemoData() {
+            dashboardState.tenants = [
+                { id: '1', name: 'Main Plant' },
+                { id: '2', name: 'Secondary Facility' }
+            ];
+            
+            const selector = document.getElementById('tenantSelector');
+            selector.innerHTML = '<option value="">All Tenants</option>';
+            
+            dashboardState.tenants.forEach(tenant => {
+                const option = document.createElement('option');
+                option.value = tenant.id;
+                option.textContent = tenant.name;
+                selector.appendChild(option);
+            });
+            
+            CONFIG.currentTenant = dashboardState.tenants[0].id;
+            selector.value = CONFIG.currentTenant;
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initializeDashboard);
+    </script>
+</body>
+</html>

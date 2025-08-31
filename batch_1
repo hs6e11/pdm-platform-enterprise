@@ -1,0 +1,134 @@
+git checkout -b feature/modularize-backend
+cat > /tmp/step1_modularize.patch <<'EOF'
+*** Begin Patch
+*** Update File: api/main.py
+@@
+-import os
+-import re
+-import json
+-import uuid
+-import logging
+-import asyncio
+-from typing import Optional, Dict, Any
+-from datetime import datetime, timezone
+-
+-import asyncpg
+-from fastapi import FastAPI, HTTPException, Depends, Request
+-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+-from fastapi.middleware.cors import CORSMiddleware
+-from starlette.responses import PlainTextResponse
++import os
++import json
++import uuid
++import logging
++from typing import Optional, Dict, Any
++from datetime import datetime, timezone
++
++import asyncpg
++from fastapi import FastAPI, HTTPException, Request
++from fastapi.middleware.cors import CORSMiddleware
++from starlette.responses import PlainTextResponse
++from .routes.iot import router as iot_router
+@@
+-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
++LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+@@
+-bearer = HTTPBearer(auto_error=True)
+-_uuid_re = re.compile(r"^[0-9a-fA-F-]{36}$")
+-
+ app = FastAPI(title="PDM Platform v2", version="2.0.0")
+@@
+ pool: Optional[asyncpg.pool.Pool] = None
+ 
+ async def init_db_pool() -> asyncpg.pool.Pool:
+     global pool
+     pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
+     async with pool.acquire() as conn:
+         await conn.execute("""
+         CREATE TABLE IF NOT EXISTS tenants (
+             id UUID PRIMARY KEY,
+             name TEXT NOT NULL,
+             created_at TIMESTAMPTZ DEFAULT NOW()
+         );
+         CREATE TABLE IF NOT EXISTS equipment (
+             id UUID PRIMARY KEY,
+             tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+             machine_id TEXT NOT NULL,
+             name TEXT,
+             location TEXT,
+             created_at TIMESTAMPTZ DEFAULT NOW()
+         );
+         CREATE TABLE IF NOT EXISTS sensor_readings (
+             id BIGSERIAL PRIMARY KEY,
+             tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+             machine_id TEXT NOT NULL,
+             timestamp TIMESTAMPTZ NOT NULL,
+             payload JSONB NOT NULL,
+             created_at TIMESTAMPTZ DEFAULT NOW()
+         );
+         """)
+     return pool
+@@
+ async def on_startup():
+     await init_db_pool()
++    # expose the pool to dependencies/routers via app.state
++    app.state.pool = pool
+     logger.info("API started, DB pool ready.")
+@@
+-async def get_tenant_id(token: HTTPAuthorizationCredentials = Depends(bearer)) -> uuid.UUID:
+-    raw = token.credentials.strip()
+-    if not _uuid_re.match(raw):
+-        raise HTTPException(status_code=401, detail="Invalid tenant token (expecting UUID)")
+-    try:
+-        tid = uuid.UUID(raw)
+-    except ValueError:
+-        raise HTTPException(status_code=401, detail="Invalid tenant token")
+-    async with pool.acquire() as conn:
+-        exists = await conn.fetchval("SELECT 1 FROM tenants WHERE id=$1", tid)
+-        if not exists:
+-            raise HTTPException(status_code=401, detail="Unknown tenant")
+-    return tid
+-
+ @app.get("/health")
+ async def health() -> Dict[str, Any]:
+     async with pool.acquire() as conn:
+         await conn.execute("SELECT 1")
+     return {"status": "ok", "time": datetime.now(timezone.utc).isoformat()}
+ 
+-@app.post("/api/iot/data")
+-async def ingest_sensor_data(req: Request, tenant_id: uuid.UUID = Depends(get_tenant_id)):
+-    body = await req.json()
+-    machine_id = body.get("machine_id")
+-    if not machine_id or not isinstance(machine_id, str):
+-        raise HTTPException(400, "machine_id required")
+-    ts_str = body.get("timestamp")
+-    if ts_str:
+-        try:
+-            ts = datetime.fromisoformat(ts_str.replace("Z","+00:00"))
+-        except Exception:
+-            raise HTTPException(400, "timestamp must be ISO8601")
+-    else:
+-        ts = datetime.now(timezone.utc)
+-    async with pool.acquire() as conn:
+-        await conn.execute(
+-            "INSERT INTO sensor_readings (tenant_id, machine_id, timestamp, payload) VALUES ($1,$2,$3,$4)",
+-            tenant_id, machine_id, ts, json.dumps(body)
+-        )
+-    return {"status": "stored", "tenant": str(tenant_id), "machine_id": machine_id, "ts": ts.isoformat()}
+-
+ @app.get("/metrics", response_class=PlainTextResponse)
+ async def metrics():
+     return "pdm_up 1\n"
+@@
+ async def create_tenant(name: str = "Default Tenant"):
+     tid = uuid.uuid4()
+     async with pool.acquire() as conn:
+         await conn.execute("INSERT INTO tenants (id, name) VALUES ($1, $2)", tid, name)
+     return {"tenant_id": str(tid), "name": name}
++
++# Routers
++app.include_router(iot_router, prefix="")
+*** End Patch
+EOF
+git apply --whitespace=fix /tmp/step1_modularize.patch
+

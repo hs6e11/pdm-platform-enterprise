@@ -1,0 +1,445 @@
+# Complete Docker Configuration for PDM Platform v2.0
+# docker/Dockerfile.complete
+
+# Multi-stage build for production deployment
+FROM python:3.11-slim as base
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Create non-root user
+RUN groupadd -r pdm && useradd -r -g pdm -s /bin/bash pdm
+
+# --- API Service Stage ---
+FROM base as api-service
+
+# Copy API-specific files
+COPY scripts/migrate_from_phase1.py ./scripts/
+COPY config/ ./config/
+COPY frontend/ ./frontend/
+
+# Set ownership
+RUN chown -R pdm:pdm /app
+
+USER pdm
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000"]
+
+# --- ML Pipeline Stage ---
+FROM base as ml-service
+
+# Copy ML-specific files
+COPY scripts/production_ml_pipeline.py ./scripts/
+COPY models/ ./models/
+RUN mkdir -p ./models && chown -R pdm:pdm ./models
+
+USER pdm
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=60s --timeout=30s --start-period=60s --retries=3 \
+  CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)"
+
+CMD ["python", "scripts/production_ml_pipeline.py", "--mode", "continuous"]
+
+# --- Protocol Clients Stage ---
+FROM base as protocol-clients
+
+# Install additional protocol dependencies
+RUN pip install --no-cache-dir pymodbus opcua paho-mqtt
+
+# Copy protocol client files
+COPY scripts/industrial_protocol_clients.py ./scripts/
+COPY scripts/equipment_config_generator.py ./scripts/
+COPY config/equipment_config.json ./config/
+
+USER pdm
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "print('Protocol clients healthy')"
+
+CMD ["python", "scripts/industrial_protocol_clients.py"]
+
+# --- Monitoring Stage ---
+FROM base as monitoring-service
+
+# Copy monitoring files
+COPY scripts/monitoring_alerting_system.py ./scripts/
+COPY config/monitoring.env ./config/
+
+USER pdm
+
+EXPOSE 9090
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import psutil; print('Monitoring healthy')"
+
+CMD ["python", "scripts/monitoring_alerting_system.py"]
+
+# --- All-in-One Development Stage ---
+FROM base as development
+
+# Copy all application files
+COPY . .
+
+# Install development dependencies
+RUN pip install --no-cache-dir pytest pytest-asyncio black flake8
+
+# Create necessary directories
+RUN mkdir -p {models,logs,config,backups} && \
+    chown -R pdm:pdm /app
+
+USER pdm
+
+# Expose all service ports
+EXPOSE 3000 8000 8080 9090
+
+# Default command runs all services
+CMD ["bash", "-c", "python scripts/complete_implementation.sh && tail -f /dev/null"]
+
+---
+
+# docker-compose.complete.yml
+# Complete Docker Compose for PDM Platform v2.0
+
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: pdm_postgres
+    environment:
+      POSTGRES_DB: pdm_platform
+      POSTGRES_USER: pdm_user
+      POSTGRES_PASSWORD: pdm_platform_2025_secure
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdm_user -d pdm_platform"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pdm-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: pdm_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - pdm-network
+
+  # All-in-One Development Container
+  pdm-platform:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.complete
+      target: development
+    container_name: pdm_platform_dev
+    environment:
+      - DATABASE_URL=postgresql://pdm_user:pdm_platform_2025_secure@postgres:5432/pdm_platform
+      - REDIS_URL=redis://redis:6379
+      - API_ENDPOINT=http://localhost:3000
+      - PYTHONPATH=/app
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./config:/app/config
+      - ./backups:/app/backups
+    ports:
+      - "3000:3000"  # API
+      - "8000:8000"  # ML Pipeline
+      - "8080:8080"  # Dashboard
+      - "9090:9090"  # Monitoring
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - pdm-network
+    restart: unless-stopped
+
+  # Production Services (Alternative to all-in-one)
+  api-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.complete
+      target: api-service
+    container_name: pdm_api
+    environment:
+      - DATABASE_URL=postgresql://pdm_user:pdm_platform_2025_secure@postgres:5432/pdm_platform
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - pdm-network
+    profiles:
+      - production
+    restart: unless-stopped
+
+  ml-service:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.complete
+      target: ml-service
+    container_name: pdm_ml
+    environment:
+      - DATABASE_URL=postgresql://pdm_user:pdm_platform_2025_secure@postgres:5432/pdm_platform
+    volumes:
+      - ./models:/app/models
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pdm-network
+    profiles:
+      - production
+    restart: unless-stopped
+
+  protocol-clients:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.complete
+      target: protocol-clients
+    container_name: pdm_protocols
+    environment:
+      - DATABASE_URL=postgresql://pdm_user:pdm_platform_2025_secure@postgres:5432/pdm_platform
+      - API_ENDPOINT=http://api-service:3000
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    depends_on:
+      - api-service
+    networks:
+      - pdm-network
+    profiles:
+      - production
+    restart: unless-stopped
+
+  monitoring:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.complete
+      target: monitoring-service
+    container_name: pdm_monitoring
+    environment:
+      - DATABASE_URL=postgresql://pdm_user:pdm_platform_2025_secure@postgres:5432/pdm_platform
+      - API_ENDPOINT=http://api-service:3000
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api-service
+    networks:
+      - pdm-network
+    profiles:
+      - production
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: pdm_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - pdm-platform  # Development mode
+    networks:
+      - pdm-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  pdm-network:
+    driver: bridge
+
+---
+
+# nginx/nginx.conf
+# Nginx configuration for PDM Platform v2.0
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    # Logging
+    log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                    '$status $body_bytes_sent "$http_referer" '
+                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+    access_log /var/log/nginx/access.log main;
+    error_log  /var/log/nginx/error.log;
+
+    # Basic Settings
+    sendfile        on;
+    tcp_nopush     on;
+    tcp_nodelay    on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    # Gzip Settings
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/xml+rss
+        application/atom+xml
+        image/svg+xml;
+
+    # Rate Limiting
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    limit_req_zone $binary_remote_addr zone=login:10m rate=1r/s;
+
+    # Upstream servers
+    upstream pdm_api {
+        server pdm-platform:3000;  # Development mode
+        # server api-service:3000;   # Production mode
+    }
+
+    upstream pdm_monitoring {
+        server pdm-platform:9090;  # Development mode
+        # server monitoring:9090;    # Production mode
+    }
+
+    # Main server block
+    server {
+        listen 80;
+        server_name _;
+
+        # Security headers
+        add_header X-Frame-Options DENY;
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
+
+        # API endpoints
+        location /api/ {
+            limit_req zone=api burst=20 nodelay;
+            
+            proxy_pass http://pdm_api;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # CORS headers
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+            add_header Access-Control-Allow-Headers "Authorization, Content-Type";
+        }
+
+        # Authentication endpoints (stricter rate limiting)
+        location /api/auth/ {
+            limit_req zone=login burst=5 nodelay;
+            
+            proxy_pass http://pdm_api;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Monitoring dashboard
+        location /monitoring/ {
+            proxy_pass http://pdm_monitoring/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Static files and main dashboard
+        location / {
+            root /usr/share/nginx/html;
+            try_files $uri $uri/ /index.html;
+            
+            # Cache static assets
+            location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+        }
+
+        # Health check endpoint
+        location /health {
+            access_log off;
+            return 200 "PDM Platform v2.0 - Healthy\n";
+            add_header Content-Type text/plain;
+        }
+
+        # Deny access to sensitive files
+        location ~ /\. {
+            deny all;
+        }
+    }
+
+    # HTTPS server (when SSL is configured)
+    # server {
+    #     listen 443 ssl http2;
+    #     server_name your-domain.com;
+    #
+    #     ssl_certificate /etc/nginx/ssl/cert.pem;
+    #     ssl_certificate_key /etc/nginx/ssl/key.pem;
+    #
+    #     # Include the HTTP server block content here
+    # }
+}

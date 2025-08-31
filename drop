@@ -1,0 +1,72 @@
+# 1) Drop all PK/UNIQUE constraints that don't include 'timestamp'
+docker compose exec postgres psql -U postgres -d pdm_v2 -v ON_ERROR_STOP=1 -c \
+"DO \$\$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT conname
+      FROM pg_constraint
+     WHERE conrelid='sensor_readings'::regclass
+       AND contype IN ('p','u')
+       AND position('timestamp' in lower(pg_get_constraintdef(oid)))=0
+  LOOP
+    EXECUTE format('ALTER TABLE sensor_readings DROP CONSTRAINT %I', r.conname);
+  END LOOP;
+END
+\$\$;"
+
+# 2) Drop any UNIQUE indexes not attached to constraints that don't include 'timestamp'
+docker compose exec postgres psql -U postgres -d pdm_v2 -v ON_ERROR_STOP=1 -c \
+"DO \$\$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT indexname
+      FROM pg_indexes
+     WHERE tablename='sensor_readings'
+       AND indexdef ILIKE 'CREATE UNIQUE INDEX %'
+       AND indexdef NOT ILIKE '%(timestamp%'
+  LOOP
+    EXECUTE format('DROP INDEX %I', r.indexname);
+  END LOOP;
+END
+\$\$;"
+
+# 3) Create the hypertable (idempotent)
+docker compose exec postgres psql -U postgres -d pdm_v2 -v ON_ERROR_STOP=1 -c \
+"SELECT create_hypertable('sensor_readings','timestamp', if_not_exists => TRUE, migrate_data => TRUE);"
+
+# 4) Ensure we have a valid PK that *includes* timestamp (only if none exists)
+docker compose exec postgres psql -U postgres -d pdm_v2 -v ON_ERROR_STOP=1 -c \
+"DO \$\$
+BEGIN
+  IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint
+       WHERE conrelid='sensor_readings'::regclass
+         AND contype='p'
+  ) THEN
+     ALTER TABLE sensor_readings ADD PRIMARY KEY (id, timestamp);
+  END IF;
+END
+\$\$;"
+
+# 5) Compression & policies (safe if repeated)
+docker compose exec postgres psql -U postgres -d pdm_v2 -v ON_ERROR_STOP=1 -c \
+"ALTER TABLE sensor_readings SET (timescaledb.compress,
+                                 timescaledb.compress_orderby = 'timestamp DESC',
+                                 timescaledb.compress_segmentby = 'tenant_id, machine_id');"
+
+docker compose exec postgres psql -U postgres -d pdm_v2 -v ON_ERROR_STOP=1 -c \
+"SELECT add_compression_policy('sensor_readings', compress_after => INTERVAL '7 days')
+ WHERE NOT EXISTS (
+   SELECT 1 FROM timescaledb_information.jobs
+    WHERE hypertable_name='sensor_readings' AND proc_name='policy_compression'
+ );"
+
+docker compose exec postgres psql -U postgres -d pdm_v2 -v ON_ERROR_STOP=1 -c \
+"SELECT add_retention_policy('sensor_readings', drop_after => INTERVAL '180 days')
+ WHERE NOT EXISTS (
+   SELECT 1 FROM timescaledb_information.jobs
+    WHERE hypertable_name='sensor_readings' AND proc_name='policy_retention'
+ );"
+
