@@ -1,0 +1,14 @@
+# Backend/API
+/api/**              @hs6e11
+/alembic/**          @hs6e11
+
+# Frontend
+/nextjs/**           @hs6e11
+
+# DevOps
+/monitoring/**       @hs6e11
+/docker-compose.yml  @hs6e11
+
+# Data/ML
+/ml-pipeline/**      @hs6e11
+
